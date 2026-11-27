@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verified Roots Demo</title>
+<style>
+  :root { --bg: #fbfaf7; --fg: #1d1d1f; --muted: #6b6b70; --box: rgba(40, 110, 200, .16); --edge: #286ec8; --root: #1a8f4a; --maybe: #c77a12; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #16171a; --fg: #ececef; --muted: #9a9aa2; --box: rgba(110, 170, 255, .18); --edge: #6eaaff; --root: #4fd18b; --maybe: #f0a63a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 16px; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  input { font: inherit; padding: 6px 8px; border: 1px solid var(--muted); border-radius: 6px; background: transparent; color: inherit; }
+  #expr { flex: 1 1 260px; font-family: ui-monospace, monospace; }
+  .num { width: 80px; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 0; background: var(--edge); color: white; cursor: pointer; }
+  canvas { width: 100%; height: 420px; display: block; border: 1px solid rgba(128,128,128,.3); border-radius: 8px; }
+  pre { font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+  .legend span { margin-right: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Verified roots</h1>
+  <p>Blue boxes are interval enclosures of f over 64 sub intervals: the graph can never leave them. Green bars are proven unique roots, amber bars are undecided clusters.</p>
+  <form id="f">
+    <input id="expr" value="sin(3*x) + 0.5*x - 0.3" aria-label="expression in x">
+    <input id="lo" class="num" value="-4" aria-label="lower bound">
+    <input id="hi" class="num" value="4" aria-label="upper bound">
+    <button>Isolate roots</button>
+  </form>
+  <canvas id="c" width="1840" height="840"></canvas>
+  <pre id="out"></pre>
+</main>
+<script type="module">
+import { compile, isolateRoots, Interval } from '../src/index.js';
+
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+
+function draw() {
+  const out = document.getElementById('out');
+  try {
+    const f = compile(document.getElementById('expr').value, ['x']);
+    const lo = Number(document.getElementById('lo').value), hi = Number(document.getElementById('hi').value);
+    const X = new Interval(lo, hi);
+    const t0 = performance.now();
+    const { roots, stats } = isolateRoots(f, X);
+    const ms = performance.now() - t0;
+
+    const W = canvas.width, H = canvas.height, N = 64;
+    const pieces = [];
+    for (let i = 0; i < N; i++) {
+      const box = new Interval(lo + (hi - lo) * i / N, lo + (hi - lo) * (i + 1) / N);
+      pieces.push([box, f.enclose([box])]);
+    }
+    const finite = pieces.flatMap(([, r]) => (r.isBounded() ? [r.lo, r.hi] : []));
+    let ymin = Math.min(...finite, -1), ymax = Math.max(...finite, 1);
+    const pad = (ymax - ymin) * 0.05; ymin -= pad; ymax += pad;
+    const sx = (x) => (x - lo) / (hi - lo) * W, sy = (y) => H - (y - ymin) / (ymax - ymin) * H;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = css('--muted'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, sy(0)); ctx.lineTo(W, sy(0)); ctx.stroke();
+    for (const [box, r] of pieces) {
+      if (r.isEmpty()) continue;
+      const top = sy(Math.min(r.hi, ymax)), bot = sy(Math.max(r.lo, ymin));
+      ctx.fillStyle = css('--box'); ctx.fillRect(sx(box.lo), top, sx(box.hi) - sx(box.lo), bot - top);
+    }
+    ctx.strokeStyle = css('--fg'); ctx.lineWidth = 3; ctx.beginPath();
+    let pen = false;
+    for (let px = 0; px <= W; px += 2) {
+      const y = f.float([lo + (hi - lo) * px / W]);
+      if (!Number.isFinite(y)) { pen = false; continue; }
+      pen ? ctx.lineTo(px, sy(y)) : ctx.moveTo(px, sy(y)); pen = true;
+    }
+    ctx.stroke();
+    for (const r of roots) {
+      ctx.fillStyle = r.status === 'unique' ? css('--root') : css('--maybe');
+      ctx.fillRect(sx(r.box.mid()) - 3, 0, 6, H);
+    }
+    out.textContent = `${roots.length} root box(es) in ${ms.toFixed(1)} ms, ${stats.boxes} boxes, ${stats.newtonSteps} Newton steps\n` +
+      roots.map((r) => `${r.status.padEnd(9)}${r.box.toString(17)}`).join('\n');
+  } catch (e) {
+    out.textContent = `error: ${e.message}`;
+  }
+}
+document.getElementById('f').addEventListener('submit', (e) => { e.preventDefault(); draw(); });
+draw();
+</script>
+</body>
+</html>
