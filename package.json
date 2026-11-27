@@ -1,0 +1,16 @@
+{
+  "name": "verified-interval-solver",
+  "version": "1.0.0",
+  "description": "Verified root finding, nonlinear systems and global optimisation with outward rounded interval arithmetic. Zero dependencies.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": "./src/index.js",
+  "bin": { "verified": "src/cli.js" },
+  "scripts": {
+    "test": "node --test",
+    "demo": "python3 -m http.server 8000"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["interval arithmetic", "verified computing", "interval newton", "krawczyk", "global optimization", "root finding"],
+  "license": "MIT"
+}
